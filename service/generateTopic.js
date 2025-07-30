@@ -30,3 +30,8 @@ export async function generateTopic() {
     throw new Error("There are problem to generate topic");
   }
 }
+
+
+export async function generatePrompt(){
+
+}

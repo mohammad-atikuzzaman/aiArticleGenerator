@@ -24,7 +24,7 @@ export async function generateArticle(topic) {
       { headers: config.headers, timeout: 30000 }
     );
 
-    const article = response.data.choices[0].message.content;
+    const article = response.data.choices[0]?.message?.content;
     console.log("Article has been Generated");
     return article;
 
