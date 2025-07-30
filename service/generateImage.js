@@ -1,37 +1,51 @@
-async function query(data) {
-  try {
-    const response = await fetch(
-      "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-dev",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer api_key`, // ✅ fixed extra `}`
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      }
-    );
+import fetch from "node-fetch";
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+async function generateImageBuffer(prompt) {
+  const res = await fetch(
+    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-dev",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer huggingFace_api_key`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ inputs: prompt }),
     }
+  );
 
-    const blob = await response.blob();
+  const buffer = await res.buffer();
+  return buffer;
+}
 
-    // ✅ Save to file (Node.js) or show in browser (if frontend)
-    const arrayBuffer = await blob.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+async function uploadBufferToImgbb(buffer) {
+  const imgbbApiKey = "imgbb_api_key";
+  const base64Image = buffer.toString("base64");
 
-    // File system import only works in Node.js
-    const fs = await import("fs");
-    fs.writeFileSync("generated_image.png", buffer);
-    console.log("✅ Image saved as generated_image.png");
+  const formData = new URLSearchParams();
+  formData.append("key", imgbbApiKey);
+  formData.append("image", base64Image);
 
-  } catch (error) {
-    console.error("❌ Error generating image:", error.message);
+  const res = await fetch("https://api.imgbb.com/1/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const json = await res.json();
+  return json?.data?.url;
+}
+
+export async function generateImage(prompt) {
+  try {
+    const buffer = await generateImageBuffer(
+      prompt
+    );
+    console.log(buffer);
+    const imageUrl = await uploadBufferToImgbb(buffer);
+    return imageUrl;
+  } catch (err) {
+    console.error("Error:", err.message);
+    throw new Error("Something wrong to generateImage")
   }
 }
 
-query({
-  inputs: "Astronaut riding a horse in a futuristic city",
-});
+generateImage("A beautiful landscape with mountains and lake")

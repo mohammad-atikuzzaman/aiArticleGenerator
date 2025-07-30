@@ -2,7 +2,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const config = {
-  hgKey: process.env.HUGGINGFACE_API_KEY,
   apiKey: process.env.OPENROUTER_API_KEY,
   model: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
   headers: {

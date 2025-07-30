@@ -7,14 +7,14 @@ async function runGenerator() {
     const topic = await generateTopic();
     // const article = await generateArticle(topic);
     const image = await generateImage(topic);
-
+   
     const content = {
       topic,
       // article,
     };
 
     // console.log(content);
-    console.log("Article", image);
+    console.log("Image", image);
 
     return content;
   } catch (error) {
