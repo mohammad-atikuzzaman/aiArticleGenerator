@@ -1,12 +1,13 @@
 import { generateTopic } from "./service/generateTopic.js";
 import { generateArticle } from "./service/generateArticle.js";
 import { generateImage } from "./service/generateImage.js";
+import { postToFacebook } from "./utills/facebookPoster.js";
 
 async function runGenerator() {
   try {
     const topic = await generateTopic();
     const article = await generateArticle(topic);
-    const image = await generateImage(topic);
+    const image = await generateImage({ inputs: topic });
    
     const content = {
       topic,
@@ -14,7 +15,7 @@ async function runGenerator() {
       image
     };
 
-    console.log("Image", image);
+    await postToFacebook(article, image);
 
     return content;
   } catch (error) {

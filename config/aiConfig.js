@@ -11,5 +11,7 @@ export const config = {
     "X-Title": process.env.SITE_NAME || "Atikuzzaman",
   },
   huggingfaceApiKey: process.env.HUGGINGFACE_API_KEY,
-  imgbbApiKey: process.env.IMGBB_API_KEY
+  imgbbApiKey: process.env.IMGBB_API_KEY,
+  fbAccessToken: process.env.FB_PAGE_ACCESS_TOKEN,
+  fbPageId: process.env.FB_PAGE_ID,
 };
