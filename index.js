@@ -5,15 +5,15 @@ import { generateImage } from "./service/generateImage.js";
 async function runGenerator() {
   try {
     const topic = await generateTopic();
-    // const article = await generateArticle(topic);
+    const article = await generateArticle(topic);
     const image = await generateImage(topic);
    
     const content = {
       topic,
-      // article,
+      article,
+      image
     };
 
-    // console.log(content);
     console.log("Image", image);
 
     return content;

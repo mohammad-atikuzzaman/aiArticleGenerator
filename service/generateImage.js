@@ -1,24 +1,22 @@
 import fetch from "node-fetch";
+import { config } from "../config/aiConfig.js";
 
 async function generateImageBuffer(prompt) {
-  const res = await fetch(
-    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-dev",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer huggingFace_api_key`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ inputs: prompt }),
-    }
-  );
+  const res = await fetch("https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-dev", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.huggingfaceApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ inputs: prompt }),
+  });
 
   const buffer = await res.buffer();
   return buffer;
 }
 
 async function uploadBufferToImgbb(buffer) {
-  const imgbbApiKey = "imgbb_api_key";
+  const imgbbApiKey = `${config.imgbbApiKey}`;
   const base64Image = buffer.toString("base64");
 
   const formData = new URLSearchParams();
@@ -31,21 +29,16 @@ async function uploadBufferToImgbb(buffer) {
   });
 
   const json = await res.json();
-  return json?.data?.url;
+  return json.data.url;
 }
 
-export async function generateImage(prompt) {
+
+export async function generateImage(prompt){
   try {
-    const buffer = await generateImageBuffer(
-      prompt
-    );
-    console.log(buffer);
+    const buffer = await generateImageBuffer(prompt);
     const imageUrl = await uploadBufferToImgbb(buffer);
-    return imageUrl;
+    return imageUrl
   } catch (err) {
     console.error("Error:", err.message);
-    throw new Error("Something wrong to generateImage")
   }
 }
-
-generateImage("A beautiful landscape with mountains and lake")

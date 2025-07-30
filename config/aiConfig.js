@@ -10,4 +10,6 @@ export const config = {
     "HTTP-Referer": process.env.SITE_URL || "https://atikuzzaman.vercel.app",
     "X-Title": process.env.SITE_NAME || "Atikuzzaman",
   },
+  huggingfaceApiKey: process.env.HUGGINGFACE_API_KEY,
+  imgbbApiKey: process.env.IMGBB_API_KEY
 };

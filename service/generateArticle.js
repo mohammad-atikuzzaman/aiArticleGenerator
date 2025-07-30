@@ -25,7 +25,7 @@ export async function generateArticle(topic) {
     );
 
     const article = response.data.choices[0]?.message?.content;
-    console.log("Article has been Generated");
+    console.log("Article has been Generated", article);
     return article;
 
   } catch (error) {
