@@ -1,17 +1,12 @@
 import axios from "axios";
-import dotenv from "dotenv";
-dotenv.config();
+import { config } from "../config/aiConfig.js";
 
-const fb_access_token =
-  "";
-const fb_page_id = "";
-
-export async function createPublicPost(message) {
-  const endpoint = `https://graph.facebook.com/v23.0/${fb_page_id}/photos?access_token=${fb_access_token}`;
+export async function createPublicPost(article, image) {
+  const endpoint = `https://graph.facebook.com/v23.0/${config.pageid}/photos?access_token=${config.fbAccessToken}`;
 
   const postData = {
-    message,
-    url: "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQjaZqoKF8yK88wv0RQrglNCHojWUuSZQt17pddpwQVVyjIqZfonSl85849PK3Es0KLxpBNx11PACke7SujhbDJTA",
+    message: article,
+    url: image,
   };
 
   const response = await axios.post(endpoint, postData, {
@@ -22,4 +17,3 @@ export async function createPublicPost(message) {
   console.log(response.data);
 }
 
-createPublicPost("Hello from node js, this is 31 jul 2025");

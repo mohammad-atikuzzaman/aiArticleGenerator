@@ -22,21 +22,33 @@ export async function generateImage(data) {
     const arrayBuffer = await blob.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const fs = await import("fs");
+    // Convert buffer to base64
+    const base64Image = buffer.toString("base64");
 
-    // Ensure images folder exists
-    if (!fs.existsSync('./images')) {
-      fs.mkdirSync('./images');
+    // Upload to imgbb
+    const uploadResponse = await fetch(`https://api.imgbb.com/1/upload?key=${config.imgbbApiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        image: base64Image,
+        name: data.inputs || "generated_image"
+      }),
+    });
+
+    const uploadResult = await uploadResponse.json();
+
+    if (!uploadResponse.ok || !uploadResult.success) {
+      throw new Error("Image upload failed");
     }
 
-    const filePath = `./images/${data.inputs}.png`;
-    fs.writeFileSync(filePath, buffer);
-
-    console.log(`Image saved as ${filePath}`);
-    return filePath;
+    const imageUrl = uploadResult.data.url;
+    console.log("Uploaded Image URL:", imageUrl);
+    return imageUrl;
 
   } catch (error) {
-    console.error("Error generating image:", error.message);
+    console.error("Error generating/uploading image:", error.message);
     return null;
   }
 }
