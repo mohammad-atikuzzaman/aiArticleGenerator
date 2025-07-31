@@ -17,13 +17,23 @@ async function runGenerator() {
   }
 }
 
-// প্রোগ্রাম শুরু
 // (async () => {
 //   await runGenerator();
 // })();
 
+
 cron.schedule("0 9 * * *", async () => {
+  console.log("Running scheduled job at 9 AM Dhaka time...");
   await runGenerator();
 }, {
   timezone: "Asia/Dhaka"
+});
+
+console.log("Background worker started. Waiting for scheduled jobs...");
+setInterval(() => {
+}, 1000 * 60 * 60);
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, exiting gracefully...');
+  process.exit(0);
 });
