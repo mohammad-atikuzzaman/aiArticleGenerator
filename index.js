@@ -35,7 +35,7 @@ async function runGenerator() {
 cron.schedule(
   "35 9 * * *",
   async () => {
-    console.log(" Cron job triggered at:", new Date().toLocaleString());
+    console.log(" Cron job triggered at: 9:35 AM");
     await runGenerator();
   },
   {
