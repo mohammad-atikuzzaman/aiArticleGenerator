@@ -9,8 +9,7 @@ export async function createPublicPost(article, image) {
       message: article,
       url: image,
     };
-    console.log("from createPublicPost.js", postData);
-    
+
     const response = await axios.post(endpoint, postData, {
       headers: {
         "Content-Type": "application/json",
