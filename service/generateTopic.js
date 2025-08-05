@@ -10,7 +10,7 @@ export async function generateTopic() {
         model: config.model,
         messages: [{
           role: "user",
-          content: "Give me an interesting and recent topic related to technology, programming, or digital lifestyle. (No extra explanation, just the topic name)"
+          content: "Give me an interesting and recent topic related to programming, science or digital lifestyle. (No extra explanation, just the topic name)"
         }],
         max_tokens: 50,
         temperature: 0.8
@@ -22,7 +22,6 @@ export async function generateTopic() {
       .replace(/["।]/g, '')
       .trim();
 
-    console.log("Topic Generated:", topic);
     return topic;
 
   } catch (error) {
