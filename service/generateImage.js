@@ -44,7 +44,6 @@ export async function generateImage(data) {
     }
 
     const imageUrl = uploadResult.data.url;
-    console.log("Uploaded Image URL:", imageUrl);
     return imageUrl;
 
   } catch (error) {
