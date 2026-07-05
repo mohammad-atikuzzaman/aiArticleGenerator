@@ -1,24 +1,26 @@
 import axios from "axios";
 import { config } from "../config/aiConfig.js";
 
-export async function createPublicPost(article, image) {
+export async function createPublicPost(article) {
   try {
-    const endpoint = `https://graph.facebook.com/v23.0/${config.pageid}/photos?access_token=${config.fbAccessToken}`;
+    const endpoint = `https://graph.facebook.com/v23.0/${config.pageid}/feed`;
 
-    const postData = {
-      message: article,
-      url: image,
-    };
+    const response = await axios.post(
+      endpoint,
+      { message: article },
+      {
+        params: {
+          access_token: config.fbAccessToken,
+        },
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-    const response = await axios.post(endpoint, postData, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-
-    console.log("Facebook post response:", response.data);
+    console.log("Facebook text post response:", response.data);
   } catch (error) {
-    console.error("Failed to post to Facebook.".error.message);
+    console.error("Failed to post to Facebook.", error.message);
 
     if (error.response) {
       console.error(
