@@ -8,4 +8,6 @@ export const config = {
   imgbbApiKey: process.env.IMGBB_API_KEY,
   fbAccessToken: process.env.FB_PAGE_ACCESS_TOKEN,
   pageid: process.env.FB_PAGE_ID,
+  fbVerifyToken: process.env.FB_VERIFY_TOKEN,
+  port: process.env.PORT || 3000,
 };
