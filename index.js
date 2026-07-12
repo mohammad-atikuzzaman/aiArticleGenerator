@@ -1,8 +1,6 @@
 import cron from "node-cron";
 import { createServer } from "http";
 import { generateMonthlyTopics } from "./service/generateMonthlyTopics.js";
-import fs from "fs/promises";
-import path from "path";
 import { generateArticle } from "./service/generateArticle.js";
 import { generateMessengerReply } from "./service/generateMessengerReply.js";
 import {
@@ -227,11 +225,9 @@ function startWebhookServer() {
 }
 
 // for run the main generator function manually
-async function main() {
-  await runGenerator();
-}
-
-// main();
+// (async () => {
+//   await runGenerator();
+// })();
 
 cron.schedule(
   DAILY_POST_TIME,
