@@ -9,50 +9,42 @@ import {
   addConversationMessage,
   getConversationContext,
 } from "./service/conversationStore.js";
+import { rememberIncomingMessage } from "./service/messageDedupeStore.js";
+import { createPostLog, updatePostLog } from "./service/postLogStore.js";
 import { config } from "./config/aiConfig.js";
 import { createPublicPost } from "./utills/facebookPoster.js";
 import { sendMessengerReply } from "./utills/messengerResponder.js";
+import { initDatabase } from "./service/dbInit.js";
+import { addTopics, getNextTopicFromDb } from "./service/topicStore.js";
 
-const TOPICS_FILE = path.join(process.cwd(), "topics.json");
 const TIMEZONE = "Asia/Dhaka";
 const DAILY_POST_TIME = "0 21 * * *";
 const WEBHOOK_PATH = "/webhook";
-const MESSAGE_DEDUPE_TTL_MS = 1000 * 60 * 60;
-const processedMessageIds = new Map();
-
-async function loadTopics() {
-  try {
-    const data = await fs.readFile(TOPICS_FILE, "utf-8");
-    const topics = JSON.parse(data);
-    return Array.isArray(topics) ? topics : [];
-  } catch {
-    console.log("topics.json not found or invalid. Initializing empty list.");
-    return [];
-  }
-}
-
-async function saveTopics(topics) {
-  await fs.writeFile(TOPICS_FILE, JSON.stringify(topics, null, 2), "utf-8");
-}
 
 async function getNextTopic() {
-  let topics = await loadTopics();
+  let result = await getNextTopicFromDb();
 
-  if (topics.length === 0) {
-    console.log("No topics available. Generating 30 service-focused Bangla topics...");
-    topics = await generateMonthlyTopics();
-    await saveTopics(topics);
-    console.log(`Successfully generated and saved ${topics.length} topics to topics.json`);
+  if (!result) {
+    console.log("No topics available in database. Generating 30 service-focused Bangla topics...");
+    const topics = await generateMonthlyTopics();
+    await addTopics(topics);
+    console.log(`Successfully generated and saved ${topics.length} topics to database.`);
+    result = await getNextTopicFromDb();
   }
 
-  const topic = topics.shift();
-  await saveTopics(topics);
-
-  return { topic, remaining: topics.length };
+  return result;
 }
 
 async function runGenerator() {
+  let postLogId = null;
+
   try {
+    postLogId = await createPostLog({
+      status: "started",
+      startedAt: new Date(),
+      timezone: TIMEZONE,
+    });
+
     console.log(
       "Starting new text post cycle at:",
       new Date().toLocaleString("en-US", { timeZone: TIMEZONE })
@@ -62,21 +54,46 @@ async function runGenerator() {
 
     console.log(`Selected topic for today: ${topic}`);
     console.log(`Remaining topics in queue for future days: ${remaining}`);
+    await updatePostLog(postLogId, {
+      status: "topic_selected",
+      topic,
+      remainingTopics: remaining,
+    });
 
     const article = await generateArticle(topic);
 
     if (!article) {
       console.warn("Article missing. Skipping Facebook post.");
+      await updatePostLog(postLogId, {
+        status: "skipped",
+        reason: "Article missing",
+        finishedAt: new Date(),
+      });
       return;
     }
+
+    await updatePostLog(postLogId, {
+      status: "article_generated",
+      article,
+    });
 
     console.log(`
 topic: ${topic}
 article: ${article}`);
 
-    await createPublicPost(article);
+    const facebookResponse = await createPublicPost(article);
+    await updatePostLog(postLogId, {
+      status: "posted",
+      facebookResponse,
+      finishedAt: new Date(),
+    });
   } catch (error) {
     console.error("Problem in main function:", error.message);
+    await updatePostLog(postLogId, {
+      status: "failed",
+      error: error.message,
+      finishedAt: new Date(),
+    });
   }
 }
 
@@ -108,23 +125,6 @@ function readRequestBody(request) {
   });
 }
 
-function rememberMessage(messageId) {
-  const now = Date.now();
-
-  for (const [id, expiresAt] of processedMessageIds) {
-    if (expiresAt <= now) {
-      processedMessageIds.delete(id);
-    }
-  }
-
-  if (processedMessageIds.has(messageId)) {
-    return false;
-  }
-
-  processedMessageIds.set(messageId, now + MESSAGE_DEDUPE_TTL_MS);
-  return true;
-}
-
 async function processMessagingEvent(event) {
   const senderId = event.sender?.id;
   const message = event.message;
@@ -135,7 +135,7 @@ async function processMessagingEvent(event) {
 
   const messageId = message.mid || `${senderId}:${event.timestamp || Date.now()}`;
 
-  if (!rememberMessage(messageId)) {
+  if (!(await rememberIncomingMessage(messageId, senderId))) {
     console.log(`Duplicate Messenger event ignored: ${messageId}`);
     return;
   }
@@ -147,7 +147,7 @@ async function processMessagingEvent(event) {
     return;
   }
 
-  const conversationContext = await getConversationContext(senderId);
+  const conversationContext = await getConversationContext(senderId, messageText);
   const reply = await generateMessengerReply(messageText, conversationContext);
 
   await addConversationMessage(senderId, "user", messageText);
@@ -226,18 +226,29 @@ function startWebhookServer() {
   return server;
 }
 
-cron.schedule(
-  DAILY_POST_TIME,
-  async () => {
-    console.log("Daily 9:00 PM post job triggered.");
-    await runGenerator();
-  },
-  {
-    timezone: TIMEZONE,
-  }
-);
+async function main() {
+  await runGenerator();
+}
+
+main();
+
+// cron.schedule(
+//   DAILY_POST_TIME,
+//   async () => {
+//     console.log("Daily 9:00 PM post job triggered.");
+//     await runGenerator();
+//   },
+//   {
+//     timezone: TIMEZONE,
+//   }
+// );
 
 console.log("Background worker started. Text posts are scheduled daily at 9:00 PM Asia/Dhaka.");
+
+// Initialize Database connection, warm up indexes, and populate local knowledge cache
+await initDatabase().catch((err) => {
+  console.error("Initial database configuration failed. Verification indexes and cache might not be fully configured:", err.message);
+});
 
 const webhookServer = startWebhookServer();
 

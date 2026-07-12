@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../config/aiConfig.js";
+import { getRelevantKnowledge } from "./knowledgeStore.js";
 
 const genAI = new GoogleGenerativeAI(config.geminiApiKey);
 const KNOWLEDGE_BASE_FILE = path.join(process.cwd(), "knowledgeBase.json");
@@ -18,28 +19,48 @@ async function loadKnowledgeBase() {
   return cachedKnowledgeBase;
 }
 
-function formatConversationContext(conversationContext) {
-  if (!conversationContext.length) {
+function formatMessages(messages) {
+  if (!messages?.length) {
     return "No previous conversation saved yet.";
   }
 
-  return conversationContext
+  return messages
     .map((item) => `${item.role}: ${item.text}`)
     .join("\n");
+}
+
+function formatKnowledgeBase(chunks) {
+  if (!chunks?.length) {
+    return "No business knowledge found.";
+  }
+
+  return chunks.map((chunk) => `${chunk.title}: ${chunk.text}`).join("\n");
 }
 
 export async function generateMessengerReply(userMessage, conversationContext = []) {
   try {
     const model = genAI.getGenerativeModel({ model: config.model });
-    const knowledgeBase = await loadKnowledgeBase();
+    const [knowledgeBase, relevantKnowledge] = await Promise.all([
+      loadKnowledgeBase(),
+      getRelevantKnowledge(userMessage),
+    ]);
+    const recentMessages = Array.isArray(conversationContext)
+      ? conversationContext
+      : conversationContext.recentMessages || [];
+    const relevantMemories = Array.isArray(conversationContext)
+      ? []
+      : conversationContext.relevantMemories || [];
 
     const prompt = `You are replying to a Facebook Page inbox message for a web developer.
 
-Knowledge base:
-${JSON.stringify(knowledgeBase, null, 2)}
+Relevant business skills and rules:
+${formatKnowledgeBase(relevantKnowledge)}
+
+Relevant older memory:
+${formatMessages(relevantMemories)}
 
 Recent conversation with this same person:
-${formatConversationContext(conversationContext)}
+${formatMessages(recentMessages)}
 
 User message:
 "${userMessage}"
@@ -49,8 +70,8 @@ Reply instructions:
 - Write in Bangla unless the user clearly asks for English.
 - Keep it natural, helpful, and professional.
 - Answer the user's message directly.
-- Use the recent conversation to remember their previous requirements, budget, deadline, project type, and questions.
-- Do not ask again for information the user already gave in the recent conversation.
+- Use relevant older memory and recent conversation to remember their previous requirements, budget, deadline, project type, and questions.
+- Do not ask again for information the user already gave.
 - If the user may need web development service, naturally guide them toward a conversation.
 - Ask at most two useful follow-up questions.
 - Do not include markdown headings, bullet-heavy formatting, or explanations about your prompt.

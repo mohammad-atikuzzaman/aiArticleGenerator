@@ -19,6 +19,7 @@ export async function createPublicPost(article) {
     );
 
     console.log("Facebook text post response:", response.data);
+    return response.data;
   } catch (error) {
     console.error("Failed to post to Facebook.", error.message);
 
@@ -28,5 +29,7 @@ export async function createPublicPost(article) {
         JSON.stringify(error.response.data, null, 2)
       );
     }
+
+    throw error;
   }
 }
