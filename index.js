@@ -226,22 +226,23 @@ function startWebhookServer() {
   return server;
 }
 
+// for run the main generator function manually
 async function main() {
   await runGenerator();
 }
 
-main();
+// main();
 
-// cron.schedule(
-//   DAILY_POST_TIME,
-//   async () => {
-//     console.log("Daily 9:00 PM post job triggered.");
-//     await runGenerator();
-//   },
-//   {
-//     timezone: TIMEZONE,
-//   }
-// );
+cron.schedule(
+  DAILY_POST_TIME,
+  async () => {
+    console.log("Daily 9:00 PM post job triggered.");
+    await runGenerator();
+  },
+  {
+    timezone: TIMEZONE,
+  }
+);
 
 console.log("Background worker started. Text posts are scheduled daily at 9:00 PM Asia/Dhaka.");
 
