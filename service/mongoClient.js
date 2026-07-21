@@ -36,3 +36,11 @@ export async function getMongoCollection(collectionName) {
   const db = await getMongoDb();
   return db.collection(collectionName);
 }
+
+export async function closeMongoClient() {
+  if (mongoClientPromise) {
+    const client = await mongoClientPromise;
+    await client.close();
+    mongoClientPromise = null;
+  }
+}
