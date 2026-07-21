@@ -22,21 +22,16 @@ export async function addTopics(topicsArray) {
 export async function getNextTopicFromDb() {
   const collection = await getCollection();
   
-  // Find the oldest unused topic
-  const nextDoc = await collection.findOne(
+  // Atomically find and mark the oldest unused topic
+  const nextDoc = await collection.findOneAndUpdate(
     { used: false },
-    { sort: { createdAt: 1 } }
+    { $set: { used: true, usedAt: new Date() } },
+    { sort: { createdAt: 1 }, returnDocument: "after" }
   );
   
   if (!nextDoc) {
     return null;
   }
-  
-  // Mark it as used
-  await collection.updateOne(
-    { _id: nextDoc._id },
-    { $set: { used: true, usedAt: new Date() } }
-  );
   
   // Get remaining unused topics count
   const remaining = await collection.countDocuments({ used: false });
