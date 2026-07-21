@@ -10,6 +10,8 @@ export const config = {
   fbAccessToken: process.env.FB_PAGE_ACCESS_TOKEN,
   pageid: process.env.FB_PAGE_ID,
   fbVerifyToken: process.env.FB_VERIFY_TOKEN,
+  fbAppSecret: process.env.FB_APP_SECRET,
+  graphApiVersion: process.env.FB_GRAPH_API_VERSION || "v23.0",
   port: process.env.PORT || 3000,
   mongodbUri: process.env.MONGODB_URI,
   mongodbDbName: process.env.MONGODB_DB_NAME || "aiArticleGenerator",
@@ -29,6 +31,8 @@ export const config = {
     process.env.MONGODB_POST_LOGS_COLLECTION || "post_logs",
   mongodbMessageDedupeCollection:
     process.env.MONGODB_MESSAGE_DEDUPE_COLLECTION || "processed_messages",
+  mongodbCommentDedupeCollection:
+    process.env.MONGODB_COMMENT_DEDUPE_COLLECTION || "processed_comments",
   mongodbPendingRepliesCollection:
     process.env.MONGODB_PENDING_REPLIES_COLLECTION || "pending_replies",
   mongodbTopicsCollection:

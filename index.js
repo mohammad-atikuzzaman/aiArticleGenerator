@@ -1,8 +1,12 @@
+import crypto from "crypto";
 import cron from "node-cron";
 import { createServer } from "http";
 import { generateMonthlyTopics } from "./service/generateMonthlyTopics.js";
 import { generateArticle } from "./service/generateArticle.js";
-import { generateMessengerReply } from "./service/generateMessengerReply.js";
+import {
+  generateFacebookCommentReply,
+  generateMessengerReply,
+} from "./service/generateMessengerReply.js";
 import {
   addConversationMessage,
   getConversationContext,
@@ -15,18 +19,30 @@ import {
   releaseClaim,
   wasPausedAfterClaim,
 } from "./service/pendingReplyStore.js";
-import { rememberIncomingMessage } from "./service/messageDedupeStore.js";
+import {
+  isBotSentMessage,
+  rememberBotSentMessage,
+  rememberIncomingMessage,
+} from "./service/messageDedupeStore.js";
+import {
+  forgetIncomingComment,
+  rememberIncomingComment,
+} from "./service/commentDedupeStore.js";
 import { createPostLog, updatePostLog } from "./service/postLogStore.js";
 import { config } from "./config/aiConfig.js";
 import { createPublicPost } from "./utills/facebookPoster.js";
 import { sendMessengerReply } from "./utills/messengerResponder.js";
+import {
+  getFacebookPostContext,
+  replyToFacebookComment,
+} from "./service/facebookCommentService.js";
 import { initDatabase } from "./service/dbInit.js";
 import { addTopics, getNextTopicFromDb } from "./service/topicStore.js";
+import { closeMongoClient } from "./service/mongoClient.js";
 
 const TIMEZONE = "Asia/Dhaka";
 const DAILY_POST_TIME = "0 21 * * *";
 const WEBHOOK_PATH = "/webhook";
-const botSentMessageIds = new Set();
 let pendingReplyWorkerRunning = false;
 
 async function getNextTopic() {
@@ -148,9 +164,8 @@ async function processMessagingEvent(event) {
     const messageText = message.text?.trim();
     const messageId = message.mid;
 
-    if (messageId && botSentMessageIds.has(messageId)) {
+    if (messageId && (await isBotSentMessage(messageId))) {
       // This echo is from our own bot/app. Ignore it since it's already saved during reply generation.
-      botSentMessageIds.delete(messageId);
       return;
     }
 
@@ -180,6 +195,77 @@ async function processMessagingEvent(event) {
   console.log(`Queued Messenger message from ${senderId} for consolidated reply.`);
 }
 
+async function processCommentChange(change) {
+  const value = change.value || {};
+  const commentId = value.comment_id;
+  const postId = value.post_id;
+  const commenterId = value.from?.id;
+  const commentText = value.message?.trim();
+
+  console.log("Facebook feed change received:", {
+    field: change.field,
+    item: value.item,
+    verb: value.verb,
+    commentId,
+    postId,
+    parentId: value.parent_id,
+    commenterId,
+    hasCommentText: Boolean(commentText),
+  });
+
+  if (change.field !== "feed") {
+    console.log("Facebook feed change ignored: field is not 'feed'.");
+    return;
+  }
+
+  if (value.item !== "comment" || value.verb !== "add") {
+    console.log("Facebook feed change ignored: it is not a newly added comment.");
+    return;
+  }
+
+  // Only answer top-level comments on this Page's own posts. Replies in a
+  // visitor thread are intentionally ignored to prevent public reply loops.
+  let ignoreReason = null;
+  if (!commentId) ignoreReason = "comment_id is missing";
+  else if (!postId) ignoreReason = "post_id is missing";
+  else if (!commenterId) ignoreReason = "comment author ID is missing";
+  else if (!commentText) ignoreReason = "comment text is missing";
+  else if (String(commenterId) === String(config.pageid)) ignoreReason = "comment was written by this Page";
+  else if (!String(postId).startsWith(`${config.pageid}_`)) ignoreReason = "comment is not on this Page's post";
+  else if (value.parent_id && String(value.parent_id) !== String(postId)) ignoreReason = "comment is a reply inside another comment thread";
+
+  if (ignoreReason) {
+    console.log(`Facebook comment ignored (${commentId || "unknown"}): ${ignoreReason}.`);
+    return;
+  }
+
+  if (!(await rememberIncomingComment(commentId, postId, commenterId))) {
+    console.log(`Duplicate Facebook comment event ignored: ${commentId}`);
+    return;
+  }
+
+  try {
+    console.log(`Fetching post context for Facebook comment ${commentId}.`);
+    const postText = await getFacebookPostContext(postId);
+    console.log(`Post context loaded for ${commentId} (${postText.length} characters). Generating AI decision.`);
+    const reply = await generateFacebookCommentReply(postText, commentText);
+    if (!reply) {
+      console.log(`Facebook comment ${commentId} was classified as non-service-related; no reply sent.`);
+      return;
+    }
+
+    console.log(`Service-related Facebook comment detected (${commentId}). Sending public reply.`);
+    await replyToFacebookComment(commentId, reply);
+    console.log(`Sent Facebook comment reply for ${commentId}.`);
+  } catch (error) {
+    console.error(`Facebook comment reply failed for ${commentId}:`, error.message);
+    if (error.response?.data) {
+      console.error("Facebook Graph API error details:", JSON.stringify(error.response.data));
+    }
+    await forgetIncomingComment(commentId);
+  }
+}
+
 async function processPendingReply(job) {
   const messageText = job.messages.map((message) => message.text).join("\n").trim();
   if (!messageText) {
@@ -203,8 +289,7 @@ async function processPendingReply(job) {
       throw new Error("Messenger did not return a message ID.");
     }
 
-    botSentMessageIds.add(sentResult.message_id);
-    setTimeout(() => botSentMessageIds.delete(sentResult.message_id), 120000);
+    await rememberBotSentMessage(sentResult.message_id);
 
     // Delivery succeeded. Do not retry the message just because storing its
     // optional long-term memory has a temporary problem.
@@ -262,9 +347,50 @@ function startPendingReplyWorker() {
   console.log(`Messenger reply worker started (debounce: ${config.messengerReplyDebounceMs / 1000}s).`);
 }
 
+function verifyFacebookSignature(request, body) {
+  if (!config.fbAppSecret) {
+    console.warn("FB_APP_SECRET is not configured. Skipping webhook signature verification.");
+    return true;
+  }
+
+  const signatureHeader = request.headers["x-hub-signature-256"];
+  if (!signatureHeader) {
+    console.warn("Missing x-hub-signature-256 header in webhook request.");
+    return false;
+  }
+
+  const [algorithm, signature] = signatureHeader.split("=");
+  if (algorithm !== "sha256" || !signature) {
+    console.warn("Invalid x-hub-signature-256 header format.");
+    return false;
+  }
+
+  try {
+    const expectedSignature = crypto
+      .createHmac("sha256", config.fbAppSecret)
+      .update(body)
+      .digest("hex");
+
+    return crypto.timingSafeEqual(
+      Buffer.from(signature, "hex"),
+      Buffer.from(expectedSignature, "hex")
+    );
+  } catch (error) {
+    console.error("Error verifying webhook signature:", error.message);
+    return false;
+  }
+}
+
 async function handleWebhookPost(request, response) {
   try {
     const body = await readRequestBody(request);
+
+    if (!verifyFacebookSignature(request, body)) {
+      console.warn("Unauthorized webhook request rejected (invalid signature).");
+      sendText(response, 403, "Forbidden");
+      return;
+    }
+
     const payload = JSON.parse(body);
     console.log("Webhook POST received payload:", JSON.stringify(payload, null, 2));
 
@@ -280,6 +406,14 @@ async function handleWebhookPost(request, response) {
     // a user message arrive in the same webhook payload.
     for (const event of events) {
       await processMessagingEvent(event);
+    }
+
+    const commentChanges = payload.entry.flatMap((entry) => entry.changes || []);
+    if (commentChanges.length) {
+      console.log(`Processing ${commentChanges.length} Facebook Page feed change(s).`);
+    }
+    for (const change of commentChanges) {
+      await processCommentChange(change);
     }
   } catch (error) {
     console.error("Webhook POST handling failed:", error.message);
@@ -366,7 +500,33 @@ startPendingReplyWorker();
 
 const webhookServer = startWebhookServer();
 
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received, exiting gracefully...");
-  webhookServer.close(() => process.exit(0));
+async function shutdown(signal) {
+  console.log(`${signal} received. Shutting down gracefully...`);
+  webhookServer.close(async () => {
+    try {
+      await closeMongoClient();
+      console.log("MongoDB connection closed.");
+    } catch (err) {
+      console.error("Error closing MongoDB connection:", err.message);
+    }
+    process.exit(0);
+  });
+
+  // Force exit if server does not close within 10 seconds
+  setTimeout(() => {
+    console.error("Forceful shutdown after timeout.");
+    process.exit(1);
+  }, 10000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error.message, error.stack);
+  shutdown("uncaughtException");
 });

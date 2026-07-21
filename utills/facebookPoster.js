@@ -3,7 +3,7 @@ import { config } from "../config/aiConfig.js";
 
 export async function createPublicPost(article) {
   try {
-    const endpoint = `https://graph.facebook.com/v23.0/${config.pageid}/feed`;
+    const endpoint = `https://graph.facebook.com/${config.graphApiVersion}/${config.pageid}/feed`;
 
     const response = await axios.post(
       endpoint,
