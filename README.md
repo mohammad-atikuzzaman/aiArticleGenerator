@@ -68,13 +68,18 @@ This end-to-end process runs automatically, delivering fresh, contextual content
    MONGODB_URI="mongodb+srv://user:password@cluster.mongodb.net/?retryWrites=true&w=majority"
    MONGODB_DB_NAME="aiArticleGenerator"
    MONGODB_CONVERSATIONS_COLLECTION="conversation_messages"
+   MONGODB_PENDING_REPLIES_COLLECTION="pending_replies"
    MONGODB_VECTOR_INDEX="conversation_embedding_index"
    GEMINI_EMBEDDING_MODEL="text-embedding-004"
+   MESSENGER_REPLY_DEBOUNCE_MS=20000
+   MESSENGER_ADMIN_PAUSE_MS=600000
    ```
 
 ### MongoDB Vector Search Setup
 
 Messenger conversations are stored in MongoDB. Each saved message also gets a Gemini embedding, so future replies can retrieve only the most relevant old messages instead of sending the full chat history to the AI model. This keeps prompts smaller and helps reduce token cost.
+
+Incoming Messenger messages are first grouped in the short-lived `pending_replies` collection. The bot waits 20 seconds after a user's last message, then sends one consolidated reply. A human admin reply pauses the bot for 10 minutes; any messages received during that period are answered together when the pause ends. The collection has a TTL index, so inactive buffers are deleted automatically.
 
 If you use MongoDB Atlas, create a Vector Search index on the `conversation_messages` collection:
 

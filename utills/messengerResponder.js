@@ -27,6 +27,7 @@ export async function sendMessengerReply(recipientId, text) {
     );
 
     console.log("Messenger reply sent:", response.data);
+    return response.data;
   } catch (error) {
     console.error("Failed to send Messenger reply.", error.message);
 
@@ -36,5 +37,6 @@ export async function sendMessengerReply(recipientId, text) {
         JSON.stringify(error.response.data, null, 2)
       );
     }
+    return null;
   }
 }

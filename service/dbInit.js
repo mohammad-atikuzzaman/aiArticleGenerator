@@ -18,7 +18,15 @@ export async function initDatabase() {
       dedupeCollection.createIndex({ createdAt: 1 }, { expireAfterSeconds: 3600 })
     ]);
 
-    // 2. Initialize conversation store indexes
+    // 2. One short-lived reply buffer per active Messenger user.
+    const pendingRepliesCollection = await getMongoCollection(config.mongodbPendingRepliesCollection);
+    await Promise.all([
+      pendingRepliesCollection.createIndex({ userId: 1 }, { unique: true }),
+      pendingRepliesCollection.createIndex({ status: 1, hasPendingMessages: 1, replyAt: 1 }),
+      pendingRepliesCollection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    ]);
+
+    // 3. Initialize conversation store indexes
     const conversationsCollection = await getMongoCollection(config.mongodbConversationsCollection);
     await Promise.all([
       conversationsCollection.createIndex({ userId: 1, createdAt: -1 }),
@@ -26,7 +34,7 @@ export async function initDatabase() {
       conversationsCollection.createIndex({ userId: 1, hasEmbedding: 1, createdAt: -1 }),
     ]);
 
-    // 3. Initialize post log store indexes
+    // 4. Initialize post log store indexes
     const postLogsCollection = await getMongoCollection(config.mongodbPostLogsCollection);
     await Promise.all([
       postLogsCollection.createIndex({ status: 1, createdAt: -1 }),
@@ -34,7 +42,7 @@ export async function initDatabase() {
       postLogsCollection.createIndex({ createdAt: -1 }),
     ]);
 
-    // 4. Initialize knowledge store indexes
+    // 5. Initialize knowledge store indexes
     const knowledgeCollection = await getMongoCollection(config.mongodbKnowledgeCollection);
     await Promise.all([
       knowledgeCollection.createIndex({ key: 1 }, { unique: true }),
@@ -42,13 +50,13 @@ export async function initDatabase() {
       knowledgeCollection.createIndex({ title: "text", text: "text" }) // For local/fallback BM25 matching
     ]);
 
-    // 5. Initialize topics collection indexes
+    // 6. Initialize topics collection indexes
     const topicsCollection = await getMongoCollection(config.mongodbTopicsCollection);
     await Promise.all([
       topicsCollection.createIndex({ used: 1, createdAt: 1 }),
     ]);
 
-    // 6. Run static knowledge base sync once on startup
+    // 7. Run static knowledge base sync once on startup
     await syncKnowledgeBase();
     console.log("Database initialized successfully.");
     return true;

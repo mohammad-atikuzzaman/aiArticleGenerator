@@ -3,7 +3,7 @@ dotenv.config();
 
 export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY,
-  model: "gemini-2.5-flash",
+  model: "gemini-3.6-flash",
   embeddingModel: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
   huggingfaceApiKey: process.env.HUGGINGFACE_API_KEY,
   imgbbApiKey: process.env.IMGBB_API_KEY,
@@ -29,6 +29,29 @@ export const config = {
     process.env.MONGODB_POST_LOGS_COLLECTION || "post_logs",
   mongodbMessageDedupeCollection:
     process.env.MONGODB_MESSAGE_DEDUPE_COLLECTION || "processed_messages",
+  mongodbPendingRepliesCollection:
+    process.env.MONGODB_PENDING_REPLIES_COLLECTION || "pending_replies",
   mongodbTopicsCollection:
     process.env.MONGODB_TOPICS_COLLECTION || "topics",
+  messengerReplyDebounceMs: Number(
+    process.env.MESSENGER_REPLY_DEBOUNCE_MS || 20 * 1000
+  ),
+  messengerAdminPauseMs: Number(
+    process.env.MESSENGER_ADMIN_PAUSE_MS || 10 * 60 * 1000
+  ),
+  messengerReplyPollMs: Number(
+    process.env.MESSENGER_REPLY_POLL_MS || 10 * 1000
+  ),
+  messengerReplyConcurrency: Number(
+    process.env.MESSENGER_REPLY_CONCURRENCY || 3
+  ),
+  messengerReplyLeaseMs: Number(
+    process.env.MESSENGER_REPLY_LEASE_MS || 5 * 60 * 1000
+  ),
+  messengerReplyRetryMs: Number(
+    process.env.MESSENGER_REPLY_RETRY_MS || 60 * 1000
+  ),
+  messengerPendingMessageLimit: Number(
+    process.env.MESSENGER_PENDING_MESSAGE_LIMIT || 20
+  ),
 };

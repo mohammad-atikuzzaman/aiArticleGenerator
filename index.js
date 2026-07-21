@@ -7,6 +7,14 @@ import {
   addConversationMessage,
   getConversationContext,
 } from "./service/conversationStore.js";
+import {
+  claimNextDueReply,
+  completeClaim,
+  pauseUserReplies,
+  queueUserMessage,
+  releaseClaim,
+  wasPausedAfterClaim,
+} from "./service/pendingReplyStore.js";
 import { rememberIncomingMessage } from "./service/messageDedupeStore.js";
 import { createPostLog, updatePostLog } from "./service/postLogStore.js";
 import { config } from "./config/aiConfig.js";
@@ -18,6 +26,8 @@ import { addTopics, getNextTopicFromDb } from "./service/topicStore.js";
 const TIMEZONE = "Asia/Dhaka";
 const DAILY_POST_TIME = "0 21 * * *";
 const WEBHOOK_PATH = "/webhook";
+const botSentMessageIds = new Set();
+let pendingReplyWorkerRunning = false;
 
 async function getNextTopic() {
   let result = await getNextTopicFromDb();
@@ -125,9 +135,30 @@ function readRequestBody(request) {
 
 async function processMessagingEvent(event) {
   const senderId = event.sender?.id;
+  const recipientId = event.recipient?.id;
   const message = event.message;
 
-  if (!senderId || senderId === config.pageid || !message || message.is_echo) {
+  if (!senderId || !message) {
+    return;
+  }
+
+  // Intercept human admin replies (echo events)
+  if (message.is_echo || senderId === config.pageid) {
+    const actualUserId = recipientId;
+    const messageText = message.text?.trim();
+    const messageId = message.mid;
+
+    if (messageId && botSentMessageIds.has(messageId)) {
+      // This echo is from our own bot/app. Ignore it since it's already saved during reply generation.
+      botSentMessageIds.delete(messageId);
+      return;
+    }
+
+    if (actualUserId && messageText) {
+      console.log(`Human admin reply detected. Saving to conversation memory for user ${actualUserId}: ${messageText}`);
+      await addConversationMessage(actualUserId, "assistant", messageText, { isHumanAdmin: true });
+      await pauseUserReplies(actualUserId);
+    }
     return;
   }
 
@@ -145,27 +176,111 @@ async function processMessagingEvent(event) {
     return;
   }
 
-  const conversationContext = await getConversationContext(senderId, messageText);
-  const reply = await generateMessengerReply(messageText, conversationContext);
+  await queueUserMessage(senderId, messageText, messageId);
+  console.log(`Queued Messenger message from ${senderId} for consolidated reply.`);
+}
 
-  await addConversationMessage(senderId, "user", messageText);
-  await addConversationMessage(senderId, "assistant", reply);
-  await sendMessengerReply(senderId, reply);
+async function processPendingReply(job) {
+  const messageText = job.messages.map((message) => message.text).join("\n").trim();
+  if (!messageText) {
+    await completeClaim(job);
+    return;
+  }
+
+  try {
+    const conversationContext = await getConversationContext(job.userId, messageText);
+    const reply = await generateMessengerReply(messageText, conversationContext);
+
+    // Give a newly-arrived human admin message priority over an in-flight job.
+    if (await wasPausedAfterClaim(job.userId, job.claimedAt)) {
+      console.log(`Pending reply for ${job.userId} deferred because a human admin took over.`);
+      await releaseClaim(job, 0);
+      return;
+    }
+
+    const sentResult = await sendMessengerReply(job.userId, reply);
+    if (!sentResult?.message_id) {
+      throw new Error("Messenger did not return a message ID.");
+    }
+
+    botSentMessageIds.add(sentResult.message_id);
+    setTimeout(() => botSentMessageIds.delete(sentResult.message_id), 120000);
+
+    // Delivery succeeded. Do not retry the message just because storing its
+    // optional long-term memory has a temporary problem.
+    try {
+      await addConversationMessage(job.userId, "user", messageText);
+      await addConversationMessage(job.userId, "assistant", reply);
+    } catch (error) {
+      console.error(`Could not save Messenger conversation for ${job.userId}:`, error.message);
+    }
+
+    try {
+      await completeClaim(job);
+    } catch (error) {
+      // The message has already reached Messenger. Retrying this claim could
+      // send a duplicate reply, so leave it for operational cleanup instead.
+      console.error(`Could not finalize Messenger reply for ${job.userId}:`, error.message);
+      return;
+    }
+    console.log(`Sent consolidated Messenger reply to ${job.userId}.`);
+  } catch (error) {
+    console.error(`Pending Messenger reply failed for ${job.userId}:`, error.message);
+    await releaseClaim(job);
+  }
+}
+
+async function runPendingReplyWorker() {
+  if (pendingReplyWorkerRunning) {
+    return;
+  }
+
+  pendingReplyWorkerRunning = true;
+  try {
+    const jobs = [];
+    for (let index = 0; index < config.messengerReplyConcurrency; index += 1) {
+      const job = await claimNextDueReply();
+      if (!job) break;
+      jobs.push(processPendingReply(job));
+    }
+    await Promise.all(jobs);
+  } catch (error) {
+    console.error("Pending reply worker failed:", error.message);
+  } finally {
+    pendingReplyWorkerRunning = false;
+  }
+}
+
+function startPendingReplyWorker() {
+  if (!config.mongodbUri) {
+    console.warn("Pending Messenger reply worker is disabled because MONGODB_URI is not set.");
+    return;
+  }
+
+  setInterval(runPendingReplyWorker, config.messengerReplyPollMs);
+  void runPendingReplyWorker();
+  console.log(`Messenger reply worker started (debounce: ${config.messengerReplyDebounceMs / 1000}s).`);
 }
 
 async function handleWebhookPost(request, response) {
   try {
     const body = await readRequestBody(request);
     const payload = JSON.parse(body);
+    console.log("Webhook POST received payload:", JSON.stringify(payload, null, 2));
 
     sendText(response, 200, "EVENT_RECEIVED");
 
     if (payload.object !== "page") {
+      console.log("Ignoring non-page object event:", payload.object);
       return;
     }
 
     const events = payload.entry.flatMap((entry) => entry.messaging || []);
-    await Promise.all(events.map(processMessagingEvent));
+    // Preserve Messenger's event order. This matters when an admin handoff and
+    // a user message arrive in the same webhook payload.
+    for (const event of events) {
+      await processMessagingEvent(event);
+    }
   } catch (error) {
     console.error("Webhook POST handling failed:", error.message);
 
@@ -246,6 +361,8 @@ console.log("Background worker started. Text posts are scheduled daily at 9:00 P
 await initDatabase().catch((err) => {
   console.error("Initial database configuration failed. Verification indexes and cache might not be fully configured:", err.message);
 });
+
+startPendingReplyWorker();
 
 const webhookServer = startWebhookServer();
 
