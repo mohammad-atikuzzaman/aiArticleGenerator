@@ -98,37 +98,23 @@ Ensure you have the following installed and configured before starting:
 Create or update your `.env` file in the root directory. Below is the complete, exact structure matching this application:
 
 ```env
-# ==========================================
-# SERVER CONFIGURATION
-# ==========================================
+SITE_URL=https://your-domain.com
+SITE_NAME=YourSiteName
+
+TOGATHER_API_KEY=your_together_api_key
+HUGGINGFACE_API_KEY=your_huggingface_api_key
+GEMINI_API_KEY=your_gemini_api_key
+IMGBB_API_KEY=your_imgbb_api_key
+
+FB_PAGE_ACCESS_TOKEN=your_facebook_page_access_token
+FB_PAGE_ID=your_facebook_page_id
+FB_VERIFY_TOKEN=your_webhook_verify_token
+FB_APP_SECRET=your_facebook_app_secret
 PORT=3000
-SITE_URL=https://your-domain.vercel.app
-SITE_NAME=YourBrandName
 
-# ==========================================
-# GOOGLE GEMINI & AI KEYS
-# ==========================================
-GEMINI_API_KEY=AIzaSyD...your_gemini_api_key...
-GEMINI_EMBEDDING_MODEL=gemini-embedding-001
-HUGGINGFACE_API_KEY=hf_...optional_huggingface_key...
-IMGBB_API_KEY=66c36...optional_imgbb_key...
-
-# ==========================================
-# FACEBOOK GRAPH API & WEBHOOK CONFIGURATION
-# ==========================================
-FB_PAGE_ID=579715571901645
-FB_PAGE_ACCESS_TOKEN=EAAc2rf...your_long_lived_page_token...
-FB_VERIFY_TOKEN=page_automation_messenger_webhook
-FB_APP_SECRET=your_facebook_app_secret_hash_here
-FB_GRAPH_API_VERSION=v23.0
-
-# ==========================================
-# MONGODB CONFIGURATION
-# ==========================================
-MONGODB_URI=mongodb+srv://username:password@cluster0.tyigyp7.mongodb.net/?appName=Cluster0
+# MongoDB Configuration
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?appName=Cluster0
 MONGODB_DB_NAME=aiArticleGenerator
-
-# MongoDB Collections
 MONGODB_CONVERSATIONS_COLLECTION=conversation_messages
 MONGODB_CONVERSATION_VECTOR_INDEX=conversation_embedding_index
 MONGODB_KNOWLEDGE_COLLECTION=knowledge_chunks
@@ -136,25 +122,8 @@ MONGODB_KNOWLEDGE_VECTOR_INDEX=knowledge_embedding_index
 MONGODB_EMBEDDING_CACHE_COLLECTION=embedding_cache
 MONGODB_POST_LOGS_COLLECTION=post_logs
 MONGODB_MESSAGE_DEDUPE_COLLECTION=processed_messages
-MONGODB_COMMENT_DEDUPE_COLLECTION=processed_comments
-MONGODB_PENDING_REPLIES_COLLECTION=pending_replies
 MONGODB_TOPICS_COLLECTION=topics
-
-# Optional Connection Tuning
-MONGODB_MAX_POOL_SIZE=20
-MONGODB_MIN_POOL_SIZE=0
-MONGODB_SERVER_SELECTION_TIMEOUT_MS=5000
-
-# ==========================================
-# MESSENGER WORKER & DEBOUNCE SETTINGS
-# ==========================================
-MESSENGER_REPLY_DEBOUNCE_MS=20000      # 20 seconds wait buffer for multiple user messages
-MESSENGER_ADMIN_PAUSE_MS=600000        # 10 minutes pause when human admin replies
-MESSENGER_REPLY_POLL_MS=10000          # 10 seconds polling interval for worker
-MESSENGER_REPLY_CONCURRENCY=3          # Max concurrent user replies processed at once
-MESSENGER_REPLY_LEASE_MS=300000        # 5 minutes claim lease for worker job lock
-MESSENGER_REPLY_RETRY_MS=60000         # 1 minute retry delay on failure
-MESSENGER_PENDING_MESSAGE_LIMIT=20      # Max messages buffered per user
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 ```
 
 ---
