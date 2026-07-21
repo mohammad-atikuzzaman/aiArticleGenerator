@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import cron from "node-cron";
 import { createServer } from "http";
 import { generateMonthlyTopics } from "./service/generateMonthlyTopics.js";
@@ -18,7 +19,11 @@ import {
   releaseClaim,
   wasPausedAfterClaim,
 } from "./service/pendingReplyStore.js";
-import { rememberIncomingMessage } from "./service/messageDedupeStore.js";
+import {
+  isBotSentMessage,
+  rememberBotSentMessage,
+  rememberIncomingMessage,
+} from "./service/messageDedupeStore.js";
 import {
   forgetIncomingComment,
   rememberIncomingComment,
@@ -33,11 +38,11 @@ import {
 } from "./service/facebookCommentService.js";
 import { initDatabase } from "./service/dbInit.js";
 import { addTopics, getNextTopicFromDb } from "./service/topicStore.js";
+import { closeMongoClient } from "./service/mongoClient.js";
 
 const TIMEZONE = "Asia/Dhaka";
 const DAILY_POST_TIME = "0 21 * * *";
 const WEBHOOK_PATH = "/webhook";
-const botSentMessageIds = new Set();
 let pendingReplyWorkerRunning = false;
 
 async function getNextTopic() {
@@ -159,9 +164,8 @@ async function processMessagingEvent(event) {
     const messageText = message.text?.trim();
     const messageId = message.mid;
 
-    if (messageId && botSentMessageIds.has(messageId)) {
+    if (messageId && (await isBotSentMessage(messageId))) {
       // This echo is from our own bot/app. Ignore it since it's already saved during reply generation.
-      botSentMessageIds.delete(messageId);
       return;
     }
 
@@ -285,8 +289,7 @@ async function processPendingReply(job) {
       throw new Error("Messenger did not return a message ID.");
     }
 
-    botSentMessageIds.add(sentResult.message_id);
-    setTimeout(() => botSentMessageIds.delete(sentResult.message_id), 120000);
+    await rememberBotSentMessage(sentResult.message_id);
 
     // Delivery succeeded. Do not retry the message just because storing its
     // optional long-term memory has a temporary problem.
@@ -344,9 +347,50 @@ function startPendingReplyWorker() {
   console.log(`Messenger reply worker started (debounce: ${config.messengerReplyDebounceMs / 1000}s).`);
 }
 
+function verifyFacebookSignature(request, body) {
+  if (!config.fbAppSecret) {
+    console.warn("FB_APP_SECRET is not configured. Skipping webhook signature verification.");
+    return true;
+  }
+
+  const signatureHeader = request.headers["x-hub-signature-256"];
+  if (!signatureHeader) {
+    console.warn("Missing x-hub-signature-256 header in webhook request.");
+    return false;
+  }
+
+  const [algorithm, signature] = signatureHeader.split("=");
+  if (algorithm !== "sha256" || !signature) {
+    console.warn("Invalid x-hub-signature-256 header format.");
+    return false;
+  }
+
+  try {
+    const expectedSignature = crypto
+      .createHmac("sha256", config.fbAppSecret)
+      .update(body)
+      .digest("hex");
+
+    return crypto.timingSafeEqual(
+      Buffer.from(signature, "hex"),
+      Buffer.from(expectedSignature, "hex")
+    );
+  } catch (error) {
+    console.error("Error verifying webhook signature:", error.message);
+    return false;
+  }
+}
+
 async function handleWebhookPost(request, response) {
   try {
     const body = await readRequestBody(request);
+
+    if (!verifyFacebookSignature(request, body)) {
+      console.warn("Unauthorized webhook request rejected (invalid signature).");
+      sendText(response, 403, "Forbidden");
+      return;
+    }
+
     const payload = JSON.parse(body);
     console.log("Webhook POST received payload:", JSON.stringify(payload, null, 2));
 
@@ -456,7 +500,33 @@ startPendingReplyWorker();
 
 const webhookServer = startWebhookServer();
 
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received, exiting gracefully...");
-  webhookServer.close(() => process.exit(0));
+async function shutdown(signal) {
+  console.log(`${signal} received. Shutting down gracefully...`);
+  webhookServer.close(async () => {
+    try {
+      await closeMongoClient();
+      console.log("MongoDB connection closed.");
+    } catch (err) {
+      console.error("Error closing MongoDB connection:", err.message);
+    }
+    process.exit(0);
+  });
+
+  // Force exit if server does not close within 10 seconds
+  setTimeout(() => {
+    console.error("Forceful shutdown after timeout.");
+    process.exit(1);
+  }, 10000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error.message, error.stack);
+  shutdown("uncaughtException");
 });

@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../config/aiConfig.js";
-
-const genAI = new GoogleGenerativeAI(config.geminiApiKey);
+import { genAI, withRetry } from "./aiClient.js";
 
 export async function generateMonthlyTopics() {
   try {
@@ -23,7 +21,7 @@ Rules:
 
 Example: ["আপনার ব্যবসার জন্য দ্রুত লোডিং ওয়েবসাইট কেন জরুরি", "ল্যান্ডিং পেজ কীভাবে বেশি ক্লায়েন্ট আনতে সাহায্য করে"]`;
 
-    const result = await model.generateContent(prompt);
+    const result = await withRetry(() => model.generateContent(prompt));
     const response = await result.response;
     let text = response.text();
 

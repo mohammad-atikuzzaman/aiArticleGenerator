@@ -1,10 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../config/aiConfig.js";
 import { getRelevantKnowledge } from "./knowledgeStore.js";
+import { genAI, withRetry } from "./aiClient.js";
 
-const genAI = new GoogleGenerativeAI(config.geminiApiKey);
 const KNOWLEDGE_BASE_FILE = path.join(process.cwd(), "knowledgeBase.json");
 
 let cachedKnowledgeBase = null;
@@ -77,7 +76,7 @@ Reply instructions:
 - Do not include markdown headings, bullet-heavy formatting, or explanations about your prompt.
 - Do not invent fixed prices, exact delivery times, unavailable portfolio links, or guarantees.`;
 
-    const result = await model.generateContent(prompt);
+    const result = await withRetry(() => model.generateContent(prompt));
     const response = await result.response;
     const reply = response.text().trim();
 
@@ -111,7 +110,7 @@ If it is not service-related (for example only praise, greetings, emoji, unrelat
 
 If it is service-related, write only a concise public reply in Bangla unless the visitor clearly uses English. Be friendly and helpful, answer from the post context when possible, do not invent fixed prices or delivery times, and invite the visitor to inbox the Page for project-specific details. Do not use headings, hashtags, or markdown.`;
 
-    const result = await model.generateContent(prompt);
+    const result = await withRetry(() => model.generateContent(prompt));
     const reply = (await result.response).text().trim();
     if (!reply || reply.toUpperCase() === "SKIP") {
       console.log("AI classified Facebook comment as non-service-related.");

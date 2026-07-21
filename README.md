@@ -1,194 +1,218 @@
-# 📰 AI Article Generator
+# 🤖 AI Facebook Page Automation & Lead Assistant
 
-An automated system that creates and posts engaging articles with custom-generated images directly to a Facebook page—powered by multiple AI services and orchestrated using Node.js. 
+An intelligent, AI-powered automation system for Facebook Pages designed to drive engagement, educate audiences, and handle customer leads automatically. Powered by **Google Gemini AI**, **MongoDB Vector RAG Search**, and **Facebook Graph API (v23.0)**.
 
-This project demonstrates how artificial intelligence can streamline content creation and social media automation. Every morning at 9 AM, a Node.js script kicks off a seamless workflow:
+---
 
-This end-to-end process runs automatically, delivering fresh, contextual content without manual effort.
+## 🌟 Key Features
 
-## 🚀 Overview
+### 📅 1. Daily Automated Post Generation
+- **Topic Queue Management**: Automatically picks service-focused topics from MongoDB. If topics run out, Gemini generates 30 new Bangla topics tailored for web development and business automation.
+- **Bangla Content Writing**: Generates high-converting, educational Facebook text posts with natural soft calls-to-action (CTAs).
+- **Automated Scheduling**: Scheduled daily at 9:00 PM (Asia/Dhaka timezone) via `node-cron`.
 
-1. **Topic Generation**: Using **Mistral AI**, the system selects a trending or compelling topic for the day.
-2. **Article Writing**: Mistral AI then generates a full article based on the selected topic.
-3. **Image Creation**: Key concepts from the article are extracted and sent to the **Hugging Face Image Generator AI**, which produces a relevant visual.
-4. **Content Publishing**: The final article and image are published to a Facebook page using the **Facebook Graph API**.
+### 💬 2. Smart Messenger Auto-Responder
+- **Debounced Reply Queue**: Consolidates rapid multiple messages from the same user into a single coherent AI response.
+- **RAG Knowledge Retrieval**: Uses **MongoDB Hybrid Vector & Full-Text Search (RRF)** to answer questions accurately based on your custom `knowledgeBase.json`.
+- **Human Admin Handoff**: Intercepts admin replies (echo events) and automatically pauses bot replies for 10 minutes to prevent AI interference when a human admin takes over.
+- **Conversation Memory**: Keeps track of recent chat context and user requirements (budget, project type, deadlines).
 
-## 🧰 Technologies Used
+### 💬 3. Public Comment Auto-Reply
+- **Post Context Awareness**: Fetches the context of the Facebook post to generate relevant replies.
+- **Service Intent Classification**: AI classifies comments to ensure public replies are only sent for genuine service inquiries (ignoring greetings, praise, or unrelated chat).
+- **Public Reply Loop Prevention**: Only replies to top-level comments; avoids nested threads to prevent spam loops.
 
-- **Node.js** – The backbone of the automation and integration logic.
-- **Mistral AI** – For generating article topics and writing full-length articles.
-- **Hugging Face Image Generator** – To generate images based on article content.
-- **ImgBB Image Hosting** – To upload images made from Hugging Face Image Generator.
-- **Facebook Graph API** – For posting articles and images to Facebook.
+### 🛡️ 4. Enterprise-Grade Security & Performance
+- **Webhook HMAC Verification**: Validates `x-hub-signature-256` HTTP headers using your Facebook App Secret to prevent spoofing.
+- **Atomic Operations**: Prevents race conditions during topic selection across multiple worker instances.
+- **Exponential Backoff Retries**: Automatically retries Gemini API calls and Facebook Graph requests on rate limits (`429`) or network errors (`5xx`).
+- **Data Retention & TTL Indexes**: Automatic cleanup of old post logs (90 days), embedding caches (60 days), and processed message hashes.
 
-## 🧑‍💻 Getting Started
+---
 
-### ⚙️ Prerequisites
+## 🏗️ Architecture Overview
 
-- **Node.js** (v18 or newer recommended)
-- **Mistral AI API key** (for topic and article generation)
-- **Hugging Face API key** (for image generation)
-- **ImgBB API key** (for image uploading and link generation)
-- **Facebook Developer account** (for Graph API access)
+```
+                          ┌───────────────────────────┐
+                          │   Facebook Graph API &    │
+                          │        Webhooks           │
+                          └─────────────┬─────────────┘
+                                        │
+                         HMAC Signature │ Verification
+                                        ▼
+                          ┌───────────────────────────┐
+                          │     Node.js HTTP Server   │
+                          │        (index.js)         │
+                          └──────┬─────────────┬──────┘
+                                 │             │
+              Daily Cron Job     │             │ Webhook Events
+              (9:00 PM Dhaka)    ▼             ▼
+                 ┌─────────────────┐         ┌───────────────────────────┐
+                 │ Post Generator  │         │  Messenger / Feed Worker  │
+                 └────────┬────────┘         └─────────────┬─────────────┘
+                          │                                │
+                          ▼                                ▼
+                 ┌───────────────────────────────────────────────────────┐
+                 │       Google Gemini AI & Embedding Service            │
+                 └────────────────────────┬──────────────────────────────┘
+                                          │
+                                          ▼
+                 ┌───────────────────────────────────────────────────────┐
+                 │          MongoDB Atlas (RAG & Knowledge Base)         │
+                 └───────────────────────────────────────────────────────┘
+```
 
-### 📦 Installation
+---
 
-1. **Clone and setup the project**
+## 📋 Prerequisites
 
-   ```bash
-   git clone <repository-url>
-   cd aiArticleGenerator
-   npm install
-   ```
+Before running the application, make sure you have:
+1. **Node.js**: v18.0.0 or higher
+2. **MongoDB**: MongoDB Atlas (recommended for Vector Search) or local MongoDB instance.
+3. **Google Gemini API Key**: Obtain from [Google AI Studio](https://aistudio.google.com/).
+4. **Facebook Developer App**:
+   - Facebook Page Admin access
+   - Page Access Token (with `pages_manage_posts`, `pages_messaging`, `pages_read_engagement` permissions)
+   - App Secret & Webhook Verify Token
 
-2. **Environment Configuration**
+---
 
-   Create a `.env` file and Copy the below and update with your values:
+## ⚙️ Installation & Setup
 
-    ```bash
-   # Site
-   SITE_NAME="your-site-name"
-   SITE_URL="your-site-url"
+### 1. Clone the Repository & Install Dependencies
+```bash
+git clone <repository-url>
+cd aiArticleGenerator
+npm install
+```
 
-   # Mistral AI
-   OPENROUTER_API_KEY="your-openrouter-api-key"
+### 2. Environment Configuration
+Create a `.env` file in the root directory:
 
-   # Hugging Face AI
-   HUGGINGFACE_API_KEY="your-huggingface-api-key"
+```env
+# Server Port
+PORT=3000
 
-   # ImgBB
-   IMGBB_API_KEY="your-imgbb-api-key"
+# Google Gemini AI Configuration
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 
-   # Facebook
-   FB_PAGE_ID="your-facebook-page-id"
-   FB_PAGE_ACCESS_TOKEN="your-facebook-access-token"
-   FB_VERIFY_TOKEN="your-webhook-verify-token"
+# Facebook Graph API & Webhook Configuration
+FB_PAGE_ID=your_facebook_page_id_here
+FB_PAGE_ACCESS_TOKEN=your_facebook_page_access_token_here
+FB_VERIFY_TOKEN=your_custom_webhook_verify_token_here
+FB_APP_SECRET=your_facebook_app_secret_here
+FB_GRAPH_API_VERSION=v23.0
 
-   # MongoDB + vector memory
-   MONGODB_URI="mongodb+srv://user:password@cluster.mongodb.net/?retryWrites=true&w=majority"
-   MONGODB_DB_NAME="aiArticleGenerator"
-   MONGODB_CONVERSATIONS_COLLECTION="conversation_messages"
-   MONGODB_PENDING_REPLIES_COLLECTION="pending_replies"
-   MONGODB_COMMENT_DEDUPE_COLLECTION="processed_comments"
-   MONGODB_VECTOR_INDEX="conversation_embedding_index"
-   GEMINI_EMBEDDING_MODEL="text-embedding-004"
-   MESSENGER_REPLY_DEBOUNCE_MS=20000
-   MESSENGER_ADMIN_PAUSE_MS=600000
-   ```
+# MongoDB Configuration
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
+MONGODB_DB_NAME=aiArticleGenerator
 
-### MongoDB Vector Search Setup
+# Optional Tuning (Default values will be used if omitted)
+MESSENGER_REPLY_DEBOUNCE_MS=20000
+MESSENGER_ADMIN_PAUSE_MS=600000
+MESSENGER_REPLY_POLL_MS=10000
+MESSENGER_REPLY_CONCURRENCY=3
+```
 
-Messenger conversations are stored in MongoDB. Each saved message also gets a Gemini embedding, so future replies can retrieve only the most relevant old messages instead of sending the full chat history to the AI model. This keeps prompts smaller and helps reduce token cost.
+### 3. Customize Business Knowledge Base
+Edit `knowledgeBase.json` to define your business offerings, services, pricing policies, lead qualification questions, and tone of voice.
 
-Incoming Messenger messages are first grouped in the short-lived `pending_replies` collection. The bot waits 20 seconds after a user's last message, then sends one consolidated reply. A human admin reply pauses the bot for 10 minutes; any messages received during that period are answered together when the pause ends. The collection has a TTL index, so inactive buffers are deleted automatically.
-
-### Facebook comment replies
-
-The webhook also supports public replies to top-level comments on this Page's own posts. It replies only when AI identifies the comment as service-related, using the post text and business knowledge as context. Configure the Page webhook's `feed` subscription and ensure the Page token has the required Page engagement and user-content permissions before enabling it in Meta.
-
-If you use MongoDB Atlas, create a Vector Search index on the `conversation_messages` collection:
-
+Example `knowledgeBase.json`:
 ```json
 {
-  "fields": [
-    {
-      "type": "vector",
-      "path": "embedding",
-      "numDimensions": 768,
-      "similarity": "cosine"
-    },
-    {
-      "type": "filter",
-      "path": "userId"
-    }
+  "business": {
+    "name": "Web Development Service",
+    "owner_role": "web developer",
+    "language": "Bangla",
+    "target_customers": ["small business owner", "startup founder", "ecommerce seller"]
+  },
+  "services": [
+    "business website development",
+    "landing page design",
+    "ecommerce development",
+    "speed optimization"
+  ],
+  "pricing_policy": "Price depends on requirements. Do not quote fixed prices without scope.",
+  "lead_questions": [
+    "আপনার business type কী?",
+    "কী কী feature লাগবে?"
   ]
 }
 ```
 
-Use the same index name as `MONGODB_VECTOR_INDEX`. If the vector index is missing or you use a local MongoDB server without Atlas Vector Search, the app will still store conversations in MongoDB and fall back to recent-message context only.
+---
 
-3. **Run Development Server**
+## 🚀 Running the Application
 
+### Development Mode (with hot reload)
+```bash
+npm run dev
+```
+
+### Production Mode
+```bash
+npm start
+```
+
+---
+
+## 🔗 Facebook Webhook Integration Setup
+
+1. **Expose Local Server (For Development)**: Use `ngrok` or a reverse proxy.
    ```bash
-   npm start
+   ngrok http 3000
    ```
+2. **Configure Facebook Webhook**:
+   - Go to **Facebook Developer Dashboard** -> Your App -> **Webhooks**.
+   - Select **Page** object and set **Callback URL** to: `https://your-domain.com/webhook`
+   - Set **Verify Token** to the exact string configured in `FB_VERIFY_TOKEN`.
+   - Subscribe to the following Page fields:
+     - `messages`
+     - `messaging_postbacks`
+     - `feed`
 
-   This command starts the automation workflow. It will trigger the daily cron job, generate a topic and article, create an image, upload it, and post everything to your configured Facebook page. You should see logs in the terminal indicating each step of the process.
+---
 
-   **Testing the Workflow Manually:**  
-   If you want to test the workflow immediately (without waiting for the 9AM cron job), you can uncomment the following code in `index.js`:
-
-   ```js
-   // (async () => {
-   //   await runGenerator();
-   // })();
-   ```
-
-   This will run the generator instantly when you start the server.
-
-## 📁 Project Structure
+## 📂 Project Structure
 
 ```
 aiArticleGenerator/
-├── config/                      # Configuration Folder
-│   └── aiConfig.js              # AI configuration and API keys
-├── service/                     # Service logics
-│   └── generateArticle.js       # Generates articles using AI
-│   └── generateImage.js         # Generates images using AI
-│   └── generateTopic.js         # Generates topics using AI
-├── utills/                      # Utility functions
-│   └── facebookPoster.js        # Posts content to Facebook
-├── .env                         # Environment variables
-├── index.js                     # Main entry point
-├── package.json                 # Project metadata and dependencies
-├── README.md                    # Project documentation
-└── vercel.json                  # Vercel deployment configuration
-└── LICENSE                      # License information
+├── config/
+│   └── aiConfig.js               # Application configuration loader
+├── service/
+│   ├── aiClient.js               # Shared Gemini AI client & Exponential Backoff retry helper
+│   ├── commentDedupeStore.js     # Comment webhook event deduplication
+│   ├── conversationStore.js      # Chat memory & vector search embedding retrieval
+│   ├── dbInit.js                 # Database connection & TTL index initialization
+│   ├── embeddingService.js       # Vector embedding generator with caching
+│   ├── facebookCommentService.js # Facebook Graph API context & public comment replies
+│   ├── generateArticle.js        # Daily Facebook post content generator
+│   ├── generateMessengerReply.js # Messenger RAG reply generator & comment classifier
+│   ├── generateMonthlyTopics.js  # 30-day topic queue generator
+│   ├── knowledgeStore.js         # Hybrid Vector + Text search RAG pipeline
+│   ├── messageDedupeStore.js     # Messenger event & bot echo deduplication
+│   ├── mongoClient.js            # MongoDB client lifecycle management
+│   ├── pendingReplyStore.js      # Debounced Messenger reply buffer & atomic lock queue
+│   ├── postLogStore.js           # Posting status logger
+│   └── topicStore.js             # Topic queue store with atomic selection
+├── utills/
+│   ├── facebookPoster.js         # Facebook Page post publisher
+│   └── messengerResponder.js     # Facebook Messenger API sender
+├── index.js                      # Main application entry point & HTTP Webhook server
+├── knowledgeBase.json            # Business knowledge base definition
+└── package.json
 ```
 
-## ✨ Key Features Explained
+---
 
-- **Automated Topic Generation**: Uses Mistral AI to select trending or relevant topics every day.
-- **AI-Powered Article Writing**: Generates full-length articles based on the chosen topic using advanced language models.
-- **Custom Image Creation**: Extracts key concepts from articles and generates unique images via Hugging Face Image Generator.
-- **Image Hosting Integration**: Uploads generated images to ImgBB for reliable hosting and sharing.
-- **Seamless Facebook Publishing**: Automatically posts articles and images to a Facebook page using the Facebook Graph API.
-- **Daily Cron Job**: The entire workflow is triggered automatically every morning at 9 AM using a scheduled cron job, ensuring consistent and timely content delivery.
-- **Environment-Based Configuration**: All sensitive credentials and configuration are managed securely via environment variables.
+## 🛠️ Maintenance & Troubleshooting
 
-## 🚢 Deployment
+- **MongoDB Index Warning**: If Vector Search is unavailable or unindexed on MongoDB Atlas, the system automatically falls back to Full-Text search and in-memory knowledge base caching without crashing.
+- **Rate Limit Resilience**: All Gemini API calls use automatic exponential backoff retries.
+- **Graceful Shutdown**: The application responds to `SIGTERM` and `SIGINT` signals, ensuring in-flight webhook processes finish and MongoDB connections drain cleanly.
 
-### 🌐 Vercel Deployment (Recommended)
-
-1. **Connect to Vercel**
-
-   ```bash
-   npm install -g vercel
-   vercel login
-   vercel
-   ```
-
-2. **Environment Variables**
-   Set all environment variables in Vercel dashboard
-
-## 🙌 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+---
 
 ## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-For support create an issue in the repository.
-
-## 🙏 Acknowledgments
-
-- Inspired by the potential of AI to automate and enhance digital content creation.
-- Built through continuous learning, experimentation, and problem-solving.
-- Thanks to open-source communities and AI service providers for their valuable resources and APIs.
+ISC License.

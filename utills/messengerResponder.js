@@ -1,12 +1,14 @@
 import axios from "axios";
 import { config } from "../config/aiConfig.js";
 
-const SEND_API_ENDPOINT = "https://graph.facebook.com/v23.0/me/messages";
+function getSendApiEndpoint() {
+  return `https://graph.facebook.com/${config.graphApiVersion}/me/messages`;
+}
 
 export async function sendMessengerReply(recipientId, text) {
   try {
     const response = await axios.post(
-      SEND_API_ENDPOINT,
+      getSendApiEndpoint(),
       {
         recipient: {
           id: recipientId,

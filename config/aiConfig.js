@@ -10,6 +10,8 @@ export const config = {
   fbAccessToken: process.env.FB_PAGE_ACCESS_TOKEN,
   pageid: process.env.FB_PAGE_ID,
   fbVerifyToken: process.env.FB_VERIFY_TOKEN,
+  fbAppSecret: process.env.FB_APP_SECRET,
+  graphApiVersion: process.env.FB_GRAPH_API_VERSION || "v23.0",
   port: process.env.PORT || 3000,
   mongodbUri: process.env.MONGODB_URI,
   mongodbDbName: process.env.MONGODB_DB_NAME || "aiArticleGenerator",

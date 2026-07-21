@@ -1,7 +1,6 @@
 import axios from "axios";
 import { config } from "../config/aiConfig.js";
 
-const GRAPH_API_VERSION = "v23.0";
 const POST_CONTEXT_CACHE_TTL_MS = 15 * 60 * 1000;
 const MAX_CACHED_POSTS = 100;
 const postContextCache = new Map();
@@ -20,7 +19,7 @@ export async function getFacebookPostContext(postId) {
     return cached.text;
   }
 
-  const endpoint = `https://graph.facebook.com/${GRAPH_API_VERSION}/${postId}`;
+  const endpoint = `https://graph.facebook.com/${config.graphApiVersion}/${postId}`;
   console.log(`Requesting Facebook post context: ${postId}`);
   const response = await axios.get(endpoint, {
     params: {
@@ -39,7 +38,7 @@ export async function getFacebookPostContext(postId) {
 }
 
 export async function replyToFacebookComment(commentId, text) {
-  const endpoint = `https://graph.facebook.com/${GRAPH_API_VERSION}/${commentId}/comments`;
+  const endpoint = `https://graph.facebook.com/${config.graphApiVersion}/${commentId}/comments`;
   console.log(`Posting public Facebook reply to comment ${commentId}.`);
   const response = await axios.post(
     endpoint,
