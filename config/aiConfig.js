@@ -29,6 +29,8 @@ export const config = {
     process.env.MONGODB_POST_LOGS_COLLECTION || "post_logs",
   mongodbMessageDedupeCollection:
     process.env.MONGODB_MESSAGE_DEDUPE_COLLECTION || "processed_messages",
+  mongodbCommentDedupeCollection:
+    process.env.MONGODB_COMMENT_DEDUPE_COLLECTION || "processed_comments",
   mongodbPendingRepliesCollection:
     process.env.MONGODB_PENDING_REPLIES_COLLECTION || "pending_replies",
   mongodbTopicsCollection:

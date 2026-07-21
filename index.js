@@ -2,7 +2,10 @@ import cron from "node-cron";
 import { createServer } from "http";
 import { generateMonthlyTopics } from "./service/generateMonthlyTopics.js";
 import { generateArticle } from "./service/generateArticle.js";
-import { generateMessengerReply } from "./service/generateMessengerReply.js";
+import {
+  generateFacebookCommentReply,
+  generateMessengerReply,
+} from "./service/generateMessengerReply.js";
 import {
   addConversationMessage,
   getConversationContext,
@@ -16,10 +19,18 @@ import {
   wasPausedAfterClaim,
 } from "./service/pendingReplyStore.js";
 import { rememberIncomingMessage } from "./service/messageDedupeStore.js";
+import {
+  forgetIncomingComment,
+  rememberIncomingComment,
+} from "./service/commentDedupeStore.js";
 import { createPostLog, updatePostLog } from "./service/postLogStore.js";
 import { config } from "./config/aiConfig.js";
 import { createPublicPost } from "./utills/facebookPoster.js";
 import { sendMessengerReply } from "./utills/messengerResponder.js";
+import {
+  getFacebookPostContext,
+  replyToFacebookComment,
+} from "./service/facebookCommentService.js";
 import { initDatabase } from "./service/dbInit.js";
 import { addTopics, getNextTopicFromDb } from "./service/topicStore.js";
 
@@ -180,6 +191,77 @@ async function processMessagingEvent(event) {
   console.log(`Queued Messenger message from ${senderId} for consolidated reply.`);
 }
 
+async function processCommentChange(change) {
+  const value = change.value || {};
+  const commentId = value.comment_id;
+  const postId = value.post_id;
+  const commenterId = value.from?.id;
+  const commentText = value.message?.trim();
+
+  console.log("Facebook feed change received:", {
+    field: change.field,
+    item: value.item,
+    verb: value.verb,
+    commentId,
+    postId,
+    parentId: value.parent_id,
+    commenterId,
+    hasCommentText: Boolean(commentText),
+  });
+
+  if (change.field !== "feed") {
+    console.log("Facebook feed change ignored: field is not 'feed'.");
+    return;
+  }
+
+  if (value.item !== "comment" || value.verb !== "add") {
+    console.log("Facebook feed change ignored: it is not a newly added comment.");
+    return;
+  }
+
+  // Only answer top-level comments on this Page's own posts. Replies in a
+  // visitor thread are intentionally ignored to prevent public reply loops.
+  let ignoreReason = null;
+  if (!commentId) ignoreReason = "comment_id is missing";
+  else if (!postId) ignoreReason = "post_id is missing";
+  else if (!commenterId) ignoreReason = "comment author ID is missing";
+  else if (!commentText) ignoreReason = "comment text is missing";
+  else if (String(commenterId) === String(config.pageid)) ignoreReason = "comment was written by this Page";
+  else if (!String(postId).startsWith(`${config.pageid}_`)) ignoreReason = "comment is not on this Page's post";
+  else if (value.parent_id && String(value.parent_id) !== String(postId)) ignoreReason = "comment is a reply inside another comment thread";
+
+  if (ignoreReason) {
+    console.log(`Facebook comment ignored (${commentId || "unknown"}): ${ignoreReason}.`);
+    return;
+  }
+
+  if (!(await rememberIncomingComment(commentId, postId, commenterId))) {
+    console.log(`Duplicate Facebook comment event ignored: ${commentId}`);
+    return;
+  }
+
+  try {
+    console.log(`Fetching post context for Facebook comment ${commentId}.`);
+    const postText = await getFacebookPostContext(postId);
+    console.log(`Post context loaded for ${commentId} (${postText.length} characters). Generating AI decision.`);
+    const reply = await generateFacebookCommentReply(postText, commentText);
+    if (!reply) {
+      console.log(`Facebook comment ${commentId} was classified as non-service-related; no reply sent.`);
+      return;
+    }
+
+    console.log(`Service-related Facebook comment detected (${commentId}). Sending public reply.`);
+    await replyToFacebookComment(commentId, reply);
+    console.log(`Sent Facebook comment reply for ${commentId}.`);
+  } catch (error) {
+    console.error(`Facebook comment reply failed for ${commentId}:`, error.message);
+    if (error.response?.data) {
+      console.error("Facebook Graph API error details:", JSON.stringify(error.response.data));
+    }
+    await forgetIncomingComment(commentId);
+  }
+}
+
 async function processPendingReply(job) {
   const messageText = job.messages.map((message) => message.text).join("\n").trim();
   if (!messageText) {
@@ -280,6 +362,14 @@ async function handleWebhookPost(request, response) {
     // a user message arrive in the same webhook payload.
     for (const event of events) {
       await processMessagingEvent(event);
+    }
+
+    const commentChanges = payload.entry.flatMap((entry) => entry.changes || []);
+    if (commentChanges.length) {
+      console.log(`Processing ${commentChanges.length} Facebook Page feed change(s).`);
+    }
+    for (const change of commentChanges) {
+      await processCommentChange(change);
     }
   } catch (error) {
     console.error("Webhook POST handling failed:", error.message);

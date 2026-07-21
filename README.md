@@ -69,6 +69,7 @@ This end-to-end process runs automatically, delivering fresh, contextual content
    MONGODB_DB_NAME="aiArticleGenerator"
    MONGODB_CONVERSATIONS_COLLECTION="conversation_messages"
    MONGODB_PENDING_REPLIES_COLLECTION="pending_replies"
+   MONGODB_COMMENT_DEDUPE_COLLECTION="processed_comments"
    MONGODB_VECTOR_INDEX="conversation_embedding_index"
    GEMINI_EMBEDDING_MODEL="text-embedding-004"
    MESSENGER_REPLY_DEBOUNCE_MS=20000
@@ -80,6 +81,10 @@ This end-to-end process runs automatically, delivering fresh, contextual content
 Messenger conversations are stored in MongoDB. Each saved message also gets a Gemini embedding, so future replies can retrieve only the most relevant old messages instead of sending the full chat history to the AI model. This keeps prompts smaller and helps reduce token cost.
 
 Incoming Messenger messages are first grouped in the short-lived `pending_replies` collection. The bot waits 20 seconds after a user's last message, then sends one consolidated reply. A human admin reply pauses the bot for 10 minutes; any messages received during that period are answered together when the pause ends. The collection has a TTL index, so inactive buffers are deleted automatically.
+
+### Facebook comment replies
+
+The webhook also supports public replies to top-level comments on this Page's own posts. It replies only when AI identifies the comment as service-related, using the post text and business knowledge as context. Configure the Page webhook's `feed` subscription and ensure the Page token has the required Page engagement and user-content permissions before enabling it in Meta.
 
 If you use MongoDB Atlas, create a Vector Search index on the `conversation_messages` collection:
 
