@@ -1,9 +1,7 @@
 import crypto from "crypto";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../config/aiConfig.js";
 import { getMongoCollection } from "./mongoClient.js";
-
-const genAI = new GoogleGenerativeAI(config.geminiApiKey);
+import { genAI, withRetry } from "./aiClient.js";
 
 let cacheCollectionPromise = null;
 
@@ -52,7 +50,7 @@ export async function createEmbedding(text) {
   }
 
   const model = genAI.getGenerativeModel({ model: config.embeddingModel });
-  const result = await model.embedContent(normalizedText);
+  const result = await withRetry(() => model.embedContent(normalizedText));
   const embedding = result.embedding.values;
   const now = new Date();
 

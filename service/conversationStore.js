@@ -113,7 +113,7 @@ export async function getConversationContext(userId, userMessage = "") {
   };
 }
 
-export async function addConversationMessage(userId, role, text) {
+export async function addConversationMessage(userId, role, text, metadata = {}) {
   if (!config.mongodbUri) {
     console.warn("MONGODB_URI is not set. Skipping saving conversation message.");
     return;
@@ -133,7 +133,25 @@ export async function addConversationMessage(userId, role, text) {
     hasEmbedding: Boolean(embedding),
     ...(embedding ? { embedding } : {}),
     createdAt,
+    ...metadata,
   });
 
   await trimOldMessages(collection, userId);
+}
+
+export async function getLastHumanInteractionTime(userId) {
+  if (!config.mongodbUri) {
+    return null;
+  }
+  try {
+    const collection = await getCollection();
+    const lastMessage = await collection.findOne(
+      { userId, isHumanAdmin: true },
+      { sort: { createdAt: -1 } }
+    );
+    return lastMessage ? new Date(lastMessage.createdAt) : null;
+  } catch (error) {
+    console.error("Failed to fetch last human interaction time:", error.message);
+    return null;
+  }
 }

@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../config/aiConfig.js";
-
-const genAI = new GoogleGenerativeAI(config.geminiApiKey);
+import { genAI, withRetry } from "./aiClient.js";
 
 export async function generateArticle(topic) {
   try {
@@ -29,7 +27,7 @@ Style:
 - Markdown heading, code block, বা অতিরিক্ত explanation দেবেন না।
 - কোনো image prompt বা image description লিখবেন না।`;
 
-    const result = await model.generateContent(prompt);
+    const result = await withRetry(() => model.generateContent(prompt));
     const response = await result.response;
     return response.text().trim();
   } catch (error) {
